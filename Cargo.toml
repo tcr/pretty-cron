@@ -6,3 +6,4 @@ license = "LGPLv3"
 
 [dependencies]
 cron = { path = "./cron" }
+Inflector = "0.10.0"
