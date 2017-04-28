@@ -1,9 +1,9 @@
 [package]
 authors = ["Tim Ryan <id@timryan.org>"]
 name = "pretty-cron"
-version = "0.1.0"
+version = "0.3.0"
 license = "LGPLv3"
 
 [dependencies]
-cron = { path = "./cron" }
+cron = "0.2"
 Inflector = "0.10.0"
