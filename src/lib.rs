@@ -3,20 +3,19 @@
 extern crate cron;
 extern crate inflector;
 
-use cron::{Schedule, OrdinalSet};
-use cron::time_unit::*;
+use cron::{Schedule, TimeUnitSpec};
 use std::str::FromStr;
 use inflector::InflectorNumbers;
 
 /// For an array of numbers, e.g. a list of hours in a schedule,
 /// return a string listing out all of the values (complete with
 /// "and" plus ordinal text on the last item).
-fn number_list(numbers: &OrdinalSet) -> String {
-    if numbers.len() < 2 {
+fn number_list<T: TimeUnitSpec>(numbers: &T) -> String {
+    if numbers.count() < 2 {
         return format!("{}", numbers.iter().nth(0).unwrap().ordinalize());
     }
 
-    let mut nums: Vec<_> = numbers.iter().cloned().collect();
+    let mut nums: Vec<_> = numbers.iter().collect();
     let last_val = nums.pop().unwrap();
     format!("{} and {}",
             nums.into_iter()
@@ -26,13 +25,13 @@ fn number_list(numbers: &OrdinalSet) -> String {
             last_val.ordinalize())
 }
 
-fn step_size(numbers: &OrdinalSet) -> usize {
-    if numbers.len() <= 1 {
+fn step_size<T: TimeUnitSpec>(numbers: &T) -> usize {
+    if numbers.count() <= 1 {
         return 0;
     }
 
     let expected_step = numbers.iter().nth(1).unwrap() - numbers.iter().nth(0).unwrap();
-    if numbers.len() == 2 {
+    if numbers.count() == 2 {
         return expected_step as usize;
     }
 
@@ -43,66 +42,65 @@ fn step_size(numbers: &OrdinalSet) -> usize {
     //}) ? expected_step : 0;
 }
 
-fn is_every_other(step: usize, numbers: &OrdinalSet) -> bool {
-    numbers.len() == 30 && step == 2
+fn is_every_other<T: TimeUnitSpec>(step: usize, numbers: &T) -> bool {
+    numbers.count() == 30 && step == 2
 }
 
-fn is_twice_per_hour(step: usize, numbers: &OrdinalSet) -> bool {
-    numbers.len() == 2 && step == 30
+fn is_twice_per_hour<T: TimeUnitSpec>(step: usize, numbers: &T) -> bool {
+    numbers.count() == 2 && step == 30
 }
 
-fn is_on_the_hour(numbers: &OrdinalSet) -> bool {
-    numbers.len() == 1 && *numbers.iter().nth(0).unwrap() == 0
+fn is_on_the_hour<T: TimeUnitSpec>(numbers: &T) -> bool {
+    numbers.count() == 1 && numbers.iter().nth(0).unwrap() == 0
 }
 
-fn is_step_value(step: usize, numbers: &OrdinalSet) -> bool {
+fn is_step_value<T: TimeUnitSpec>(step: usize, numbers: &T) -> bool {
     // Value with slash (https://en.wikipedia.org/wiki/Cron#Non-Standard_Characters)
-    numbers.len() > 2 && step > 0
+    numbers.count() > 2 && step > 0
 }
 
 /// For an array of numbers of seconds, return a string
 /// listing all the values unless they represent a frequency divisible by 60:
 /// /2, /3, /4, /5, /6, /10, /12, /15, /20 and /30
-fn get_minutes_text_parts(minutes: &Minutes, star: bool) -> (String, String) {
+fn get_minutes_text_parts<T: TimeUnitSpec>(minutes: &T, star: bool) -> (String, String) {
     if star {
         return ("minute".to_string(), "".to_string());
     }
 
-    let numbers = minutes.ordinals();
-    let step = step_size(numbers);
-    if is_on_the_hour(numbers) {
+    let step = step_size(minutes);
+    if is_on_the_hour(minutes) {
         ("".to_string(), "hour, on the hour".to_string())
-    } else if is_every_other(step, numbers) {
+    } else if is_every_other(step, minutes) {
         ("other minute".to_string(), "".to_string())
-    } else if is_step_value(step, numbers) {
+    } else if is_step_value(step, minutes) {
         ("".to_string(), format!("{} minutes", step))
-    } else if is_twice_per_hour(step, numbers) {
+    } else if is_twice_per_hour(step, minutes) {
         ("".to_string(), "first and 30th minute".to_string())
     } else {
-        ("".to_string(), format!("{} minute", number_list(numbers)))
+        ("".to_string(), format!("{} minute", number_list(minutes)))
     }
 }
 
 /// For an array of numbers of seconds, return a string
 /// listing all the values unless they represent a frequency divisible by 60:
 /// /2, /3, /4, /5, /6, /10, /12, /15, /20 and /30
-fn get_seconds_text_parts(numbers: &Seconds, star: bool) -> (String, String) {
+fn get_seconds_text_parts<T: TimeUnitSpec>(numbers: &T, star: bool) -> (String, String) {
     if star {
         return ("second".to_string(), "".to_string());
     }
 
-    let step = step_size(numbers.ordinals());
-    if is_every_other(step, numbers.ordinals()) {
+    let step = step_size(numbers);
+    if is_every_other(step, numbers) {
         ("".to_string(), "other second".to_string())
-    } else if is_step_value(step, numbers.ordinals()) {
+    } else if is_step_value(step, numbers) {
         ("".to_string(), format!("{} seconds", step))
     } else {
         ("minute".to_string(),
          format!("starting on the {}",
-                 if numbers.ordinals().len() == 2 && step == 30 {
+                 if numbers.count() == 2 && step == 30 {
                      "first and 30th second".to_string()
                  } else {
-                     format!("{} second", number_list(numbers.ordinals()))
+                     format!("{} second", number_list(numbers))
                  }))
     }
 }
@@ -127,8 +125,8 @@ fn number_to_date_name(value: u32, kind: DateNaming) -> String {
 
 /// From an array of numbers corresponding to dates (given in type: either
 /// days of the week, or months), return a string listing all the values.
-fn date_list(numbers: &OrdinalSet, kind: DateNaming) -> String {
-    let mut values: Vec<_> = numbers.iter().cloned().collect();
+fn date_list<T: TimeUnitSpec>(numbers: &T, kind: DateNaming) -> String {
+    let mut values: Vec<_> = numbers.iter().collect();
 
     if values.len() < 2 {
         return number_to_date_name(values[0], kind);
@@ -162,11 +160,11 @@ pub fn prettify_cron(expression: &str) -> String {
     let every_day_in_month = parts[4] == "*";
     let every_month = parts[5] == "*";
 
-    let one_or_two_seconds_per_minute = !every_second && schedule.seconds.ordinals().len() <= 2;
-    let one_or_two_minutes_per_hour = !every_minute && schedule.minutes.ordinals().len() <= 2;
-    let one_or_two_hours_per_day = !every_hour && schedule.hours.ordinals().len() <= 2;
+    let one_or_two_seconds_per_minute = !every_second && schedule.seconds().count() <= 2;
+    let one_or_two_minutes_per_hour = !every_minute && schedule.minutes().count() <= 2;
+    let one_or_two_hours_per_day = !every_hour && schedule.hours().count() <= 2;
     let only_specific_days_of_month = !every_day_in_month &&
-                                      schedule.days_of_month.ordinals().len() != 31;
+                                      schedule.days_of_month().count() != 31;
 
     let mut text_parts = vec![];
 
@@ -175,8 +173,8 @@ pub fn prettify_cron(expression: &str) -> String {
         // hour or minute, print them in HH:MM format, or HH:MM:ss if seconds are used
         // If seconds are not used, later.js returns one element for the seconds (set to zero)
     } else {
-        let seconds = get_seconds_text_parts(&schedule.seconds, every_second);
-        let minutes = get_minutes_text_parts(&schedule.minutes, every_minute);
+        let seconds = get_seconds_text_parts(schedule.seconds(), every_second);
+        let minutes = get_minutes_text_parts(schedule.minutes(), every_minute);
         let mut beginning = "".to_string();
         let mut end = "".to_string();
 
@@ -184,10 +182,10 @@ pub fn prettify_cron(expression: &str) -> String {
 
         // Otherwise, list out every specified hour/minute value.
         let has_specific_seconds = !every_second &&
-                                   ((schedule.seconds.ordinals().len() > 1 &&
-                                     schedule.seconds.ordinals().len() < 60) ||
-                                    (schedule.seconds.ordinals().len() == 1 &&
-                                     *schedule.seconds.ordinals().iter().nth(0).unwrap() != 0));
+                                   ((schedule.seconds().count() > 1 &&
+                                     schedule.seconds().count() < 60) ||
+                                    (schedule.seconds().count() == 1 &&
+                                     schedule.seconds().iter().nth(0).unwrap() != 0));
         if has_specific_seconds {
             beginning = seconds.0.to_string();
             end = seconds.1.to_string();
@@ -199,8 +197,8 @@ pub fn prettify_cron(expression: &str) -> String {
             }
             if !every_minute {
                 // and only at specific minutes
-                let hours = format!("{} hour", number_list(schedule.hours.ordinals()));
-                if !has_specific_seconds && is_on_the_hour(schedule.minutes.ordinals()) {
+                let hours = format!("{} hour", number_list(schedule.hours()));
+                if !has_specific_seconds && is_on_the_hour(schedule.minutes()) {
                     text_parts = vec!["On the".to_string()];
                     end.push_str(&hours);
                 } else {
@@ -209,13 +207,13 @@ pub fn prettify_cron(expression: &str) -> String {
                 }
             } else {
                 // specific hours, but every minute
-                end.push_str(&format!("minute of {} hour", number_list(schedule.hours.ordinals())));
+                end.push_str(&format!("minute of {} hour", number_list(schedule.hours())));
             }
         } else if !every_minute {
             // every hour, but specific minutes
             beginning = minutes.0.to_string();
             end.push_str(&minutes.1);
-            if !is_on_the_hour(schedule.minutes.ordinals()) &&
+            if !is_on_the_hour(schedule.minutes()) &&
                (only_specific_days_of_month || !every_weekday || !every_month) {
                 end.push_str(" past every hour");
             }
@@ -231,7 +229,7 @@ pub fn prettify_cron(expression: &str) -> String {
 
     if only_specific_days_of_month {
         // runs only on specific day(s) of month
-        text_parts.push(format!("on the {}", number_list(schedule.days_of_month.ordinals())));
+        text_parts.push(format!("on the {}", number_list(schedule.days_of_month())));
         if every_month {
             text_parts.push("of every month".into());
         }
@@ -245,16 +243,16 @@ pub fn prettify_cron(expression: &str) -> String {
         } else {
             text_parts.push("on".into());
         }
-        text_parts.push(date_list(schedule.days_of_week.ordinals(), DateNaming::DOW));
+        text_parts.push(date_list(schedule.days_of_week(), DateNaming::DOW));
     }
 
     if !every_month {
-        if schedule.months.ordinals().len() == 12 {
+        if schedule.months().count() == 12 {
             text_parts.push("day of every month".into());
         } else {
             // runs only in specific months; put this output last
             text_parts.push(format!("in {}",
-                                    date_list(schedule.months.ordinals(), DateNaming::MON)));
+                                    date_list(schedule.months(), DateNaming::MON)));
         }
     }
 

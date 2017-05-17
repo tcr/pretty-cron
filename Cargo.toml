@@ -5,5 +5,5 @@ version = "0.3.0"
 license = "LGPLv3"
 
 [dependencies]
-cron = "0.2"
+cron = { path = "./cron" }
 Inflector = "0.10.0"
